@@ -7,7 +7,7 @@ pmi_matrix = {}
 word_to_index = dict()
 probability_per_word = dict()
 attribute_to_set = dict()
-
+functional_words = set(['IN','DT','TO','CC',','])
 
 def get_list_of_sentences(file_name):
     all_sentences  = []
@@ -25,7 +25,7 @@ def get_list_of_sentences(file_name):
             word = parts[2]
             if not word_to_index.has_key(parts[2]):
                 word_to_index[word] = len(word_to_index)
-            s.append(word_to_index[word])
+            s.append((word_to_index[word],parts[4]))
 
     return all_sentences
 
@@ -59,7 +59,7 @@ def insert_tupples_into_matrix(all_tupples):
 def convert_to_pmi():
     sum_of_all_word = get_sum_all_words_from_counter()
     create_probability_per_word(sum_of_all_word)
-    for word_index in range(len(word_to_index)):
+    for word_index in counter_per_word.keys():
         shared_probability = counter_per_word[word_index]
         word_probability = probability_per_word[word_index]
         pmi_matrix[word_index] = {}
@@ -79,13 +79,14 @@ def get_sum_all_words_from_counter():
 
 
 def create_probability_per_word(sum_of_all_word):
-    for index in word_to_index.values():
+    for index in counter_per_word.keys():
         sum_of_word = sum(counter_per_word[index].values())
         probability_per_word[index] = float(sum_of_word) / sum_of_all_word
 
 
 def reduce_matrix(counter, thrershold = 99 ):
     for i in range(len(word_to_index)):
+        if not counter.has_key(i): continue
         vector = counter[i]
         to_del = []
         for contex in vector:
@@ -108,15 +109,26 @@ def load_counter_from_file(file_name):
     return c
 
 
-def create_vectors(all_sentences,k = -1 ):
+def remove_function_word_from_sentence(sentence):
+    line = []
+    for w in sentence:
+        if not w[1] in functional_words:
+            line.append(w[0])
+
+    return line
+
+
+def create_vectors(all_sentences,k = 2 ):
     for sentence in all_sentences:
         if k ==-1:
+            sentence = [s[0] for s in sentence]
             all_tups = get_tuples(sentence)
         else:
             all_tups = []
+            sentence = remove_function_word_from_sentence(sentence)
             for index_word, word in enumerate(sentence):
-                #word_vector = matrix_word_vectors[word]
-                all_tups.extend(get_tuples(sentence[index_word-k:index_word+k]))
+                # word_vector = matrix_word_vectors[word]
+                all_tups.extend(get_tuples(sentence[max(0,index_word-k):index_word+k]))
 
         insert_tupples_into_matrix(all_tups)
 
@@ -162,21 +174,22 @@ def normelize_pmi():
 def main():
     global pmi_matrix
     global word_to_index
+    global counter_per_word
     _start_time = time.time()
 
-    all_sentences = get_list_of_sentences("wikipedia.sample.trees.lemmatized")
-    create_vectors(all_sentences)
-    reduce_matrix(counter_per_word,99)
+    # all_sentences = get_list_of_sentences("wikipedia.sample.trees.lemmatized")
+    # create_vectors(all_sentences)
+    # reduce_matrix(counter_per_word,99)
 
-    # with open('word_to_index_reduced.pickle', 'rb') as handle:
-    #     word_to_index = pickle.load(handle)
+    with open('word_to_index_reduced.pickle', 'rb') as handle:
+        word_to_index = pickle.load(handle)
 
 
     # with open('word_vector_reduced.pickle', 'rb') as handle:
     #     counter_per_word = pickle.load(handle)
 
-
-
+    #save_conuter_to_file(counter_per_word,"small_window_vector_per_word")
+    counter_per_word = load_counter_from_file("small_window_vector_per_word")
     inv_map = {v: k for k, v in word_to_index.iteritems()}
 
     convert_to_pmi()
