@@ -61,7 +61,7 @@ def convert_to_pmi():
     create_probability_per_word(sum_of_all_word)
     for word_index in counter_per_word.keys():
         shared_probability = counter_per_word[word_index]
-        word_probability = probability_per_word[word_index]
+        word_probability = np.power(probability_per_word[word_index],0.75)
         pmi_matrix[word_index] = {}
         this_pmi = pmi_matrix[word_index]
         for contex_index in shared_probability:
@@ -171,65 +171,87 @@ def normelize_pmi():
             this_pmi_dict[p] /= l2_norm
 
 
-def main():
+def create_from_wikipedia():
     global pmi_matrix
     global word_to_index
     global counter_per_word
-    _start_time = time.time()
+    all_sentences = get_list_of_sentences("wikipedia.sample.trees.lemmatized")
+    create_vectors(all_sentences, k=5)  # k determines size if context window. -1 means full sentence as context.
+    reduce_matrix(counter_per_word, 99)
 
-    # all_sentences = get_list_of_sentences("wikipedia.sample.trees.lemmatized")
-    # create_vectors(all_sentences)
-    # reduce_matrix(counter_per_word,99)
-
-    with open('word_to_index_reduced.pickle', 'rb') as handle:
-        word_to_index = pickle.load(handle)
+    # with open('word_to_index_reduced.pickle', 'rb') as handle:
+    #     word_to_index = pickle.load(handle)
 
 
     # with open('word_vector_reduced.pickle', 'rb') as handle:
     #     counter_per_word = pickle.load(handle)
 
-    #save_conuter_to_file(counter_per_word,"small_window_vector_per_word")
-    counter_per_word = load_counter_from_file("small_window_vector_per_word")
-    inv_map = {v: k for k, v in word_to_index.iteritems()}
+    # save_conuter_to_file(counter_per_word,"small_window_vector_per_word")
 
+    # counter_per_word = load_counter_from_file("small_window_vector_per_word")
     convert_to_pmi()
     reduce_matrix(pmi_matrix,0.1)
     normelize_pmi()
     # save_conuter_to_file(pmi_matrix,"pmi_matrix_normalized.pickle")
 
-
     #save_conuter_to_file(pmi_matrix,"pmi_matrix.pickle")
     #pmi_matrix = load_counter_from_file("pmi_matrix_normalized.pickle")
+    return pmi_matrix
+
+def read_w2v(file = "bow5.words"):
+    list_of_vec = []
+    with open(file) as f:
+        for i,line in enumerate(f):
+            parts = line.split()
+            word  = parts[0]
+            vec   = parts[1:]
+            word_to_index[word] = len(word_to_index)
+            word_index = word_to_index[word]
+            list_of_vec.append(np.array(vec, dtype=np.float64))
+
+    return np.matrix(list_of_vec) , word_to_index
 
 
+def main():
+    global word_to_index
+    read_from_wiki = False
 
-    fill_attribute_sets()
+    _start_time = time.time()
 
     check_for_these_words = "car bus hospital hotel gun bomb horse fox table bowl guitar piano"
     check_for_these_words = check_for_these_words.split()
-    similarities = find_similarities(check_for_these_words)
-    for w_similarity in similarities:
-        print "word checked is %s"%w_similarity[0]
-        for diffrernt_word in w_similarity[1]:
-            other_word = inv_map[diffrernt_word[0]]
-            angle = diffrernt_word[1]
-            print "word %s angle = %f"%(other_word,angle)
-        print
-    # check_word= 'paris'
-    # print pmi_matrix[word_to_index[check_word]]
-    # for p in pmi_matrix[word_to_index[check_word]].keys():
-    #     print p , inv_map[p], pmi_matrix[p]
 
-    # i = 0
-    # for j,p in enumerate(pmi_matrix):
-    #
-    #     if len(pmi_matrix[p]) > 1:
-    #         i+=1
-    #         print j ,pmi_matrix[p]
-    #         print inv_map[j]
-    #         print inv_map[pmi_matrix[p].keys()[0]]
+    if (read_from_wiki):
+        create_from_wikipedia()
+        inv_map = {v: k for k, v in word_to_index.iteritems()}
+        fill_attribute_sets()
+        similarities = find_similarities(check_for_these_words)
+        for w_similarity in similarities:
+            print "word checked is %s" % w_similarity[0]
+            for diffrernt_word in w_similarity[1]:
+                other_word = inv_map[diffrernt_word[0]]
+                angle = diffrernt_word[1]
+                print "word %s angle = %f" % (other_word, angle)
+            print
+    else:
+        matrix, word_to_index = read_w2v("deps.words")
+        inv_map = {v: k for k, v in word_to_index.iteritems()}
+        intersting_word = [ word_to_index[c] for c in check_for_these_words ]
+        rows = matrix[intersting_word]
+        result = np.dot(rows,matrix.T)
+        indecies = np.argsort(result,axis=1)
+        for i in range(len(result)):
+            word  = inv_map[intersting_word[i]]
+            print "word checked is %s" % word
+            this_row = indecies[i,:]
+            for differnt_word_index in range(20):
+                other_word = this_row[0,-1-differnt_word_index]
+                angle = result[i,other_word]
+                print "word %s angle = %f" % (inv_map[other_word], angle)
+            print ""
 
-    # print i
+
+
     print "time took %0f" % (time.time() - _start_time)
 
 
