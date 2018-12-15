@@ -2,6 +2,7 @@ from collections import Counter
 import numpy as np
 import pickle
 import time
+word_counter = Counter()
 counter_per_word = dict()
 pmi_matrix = {}
 word_to_index = dict()
@@ -10,6 +11,7 @@ attribute_to_set = dict()
 functional_words = set(['IN','DT','TO','CC',','])
 
 def get_list_of_sentences(file_name):
+    global word_counter
     all_sentences  = []
     s = []
     with open(file_name) as f:
@@ -25,8 +27,10 @@ def get_list_of_sentences(file_name):
             word = parts[2]
             if not word_to_index.has_key(parts[2]):
                 word_to_index[word] = len(word_to_index)
+            word_counter[word_to_index[word]] += 1
             s.append((word_to_index[word],parts[4]))
 
+    save_conuter_to_file([all_sentences,word_counter],"all_sentences")
     return all_sentences
 
 
@@ -68,8 +72,6 @@ def convert_to_pmi():
             this_pmi[contex_index] = np.maximum(0,np.log( float(shared_probability[contex_index])/ sum_of_all_word / probability_per_word[contex_index] / word_probability ))
 
 
-
-
 def get_sum_all_words_from_counter():
     this_sum = 0
     for c in counter_per_word:
@@ -84,7 +86,7 @@ def create_probability_per_word(sum_of_all_word):
         probability_per_word[index] = float(sum_of_word) / sum_of_all_word
 
 
-def reduce_matrix(counter, thrershold = 99 ):
+def reduce_matrix(counter, thrershold = 5 ):
     for i in range(len(word_to_index)):
         if not counter.has_key(i): continue
         vector = counter[i]
@@ -118,17 +120,26 @@ def remove_function_word_from_sentence(sentence):
     return line
 
 
+def remove_words_which_appear_less(sentence):
+    new_sen = []
+    for w,pos in sentence:
+        if word_counter[w] > 99:
+            new_sen.append((w,pos))
+    return new_sen
+
+
 def create_vectors(all_sentences,k = 2 ):
-    for sentence in all_sentences:
+    for full_sen in all_sentences:
+        reduced_sentence = remove_words_which_appear_less(full_sen)
         if k ==-1:
-            sentence = [s[0] for s in sentence]
-            all_tups = get_tuples(sentence)
+            reduced_sentence = [s[0] for s in reduced_sentence]
+            all_tups = get_tuples(reduced_sentence)
         else:
             all_tups = []
-            sentence = remove_function_word_from_sentence(sentence)
-            for index_word, word in enumerate(sentence):
+            reduced_sentence = remove_function_word_from_sentence(reduced_sentence)
+            for index_word, word in enumerate(reduced_sentence):
                 # word_vector = matrix_word_vectors[word]
-                all_tups.extend(get_tuples(sentence[max(0,index_word-k):index_word+k]))
+                all_tups.extend(get_tuples(reduced_sentence[max(0,index_word-k):index_word+k]))
 
         insert_tupples_into_matrix(all_tups)
 
@@ -176,8 +187,10 @@ def create_from_wikipedia():
     global word_to_index
     global counter_per_word
     all_sentences = get_list_of_sentences("wikipedia.sample.trees.lemmatized")
+    #all_sentences,word_counter = load_counter_from_file("all_sentences")
+    print "done loading"
     create_vectors(all_sentences, k=5)  # k determines size if context window. -1 means full sentence as context.
-    reduce_matrix(counter_per_word, 99)
+    reduce_matrix(counter_per_word, 5)
 
     # with open('word_to_index_reduced.pickle', 'rb') as handle:
     #     word_to_index = pickle.load(handle)
@@ -214,7 +227,7 @@ def read_w2v(file = "bow5.words"):
 
 def main():
     global word_to_index
-    read_from_wiki = False
+    read_from_wiki = True
 
     _start_time = time.time()
 
