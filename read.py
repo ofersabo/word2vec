@@ -8,7 +8,7 @@ pmi_matrix = {}
 word_to_index = dict()
 probability_per_word = dict()
 attribute_to_set = dict()
-functional_words = set(['IN','DT','TO','CC',',','.'])
+functional_words = set(['IN','DT','TO','CC'])
 
 
 def get_list_of_sentences(file_name):
@@ -34,7 +34,6 @@ def get_list_of_sentences(file_name):
                 relevent_words.add(word_to_index[word])
             s.append((word_to_index[word],parts[4]))
 
-    print len(relevent_words)
     #save_conuter_to_file([all_sentences,word_counter],"all_sentences")
     return all_sentences
 
@@ -198,7 +197,7 @@ def create_from_wikipedia():
     all_sentences = get_list_of_sentences("wikipedia.sample.trees.lemmatized")
     #all_sentences,word_counter = load_counter_from_file("all_sentences")
     print "done loading"
-    k = sys.argv[1] if len(sys.argv) > 1 else "-1"
+    k = sys.argv[1] if len(sys.argv) > 1 else "2"
     k = int(k)
     create_vectors(all_sentences, k=k)  # k determines size if context window. -1 means full sentence as context.
     reduce_matrix(counter_per_word, 5)
@@ -223,17 +222,37 @@ def create_from_wikipedia():
     return pmi_matrix
 
 def read_w2v(file = "bow5.words"):
+    word_to_index_local = {}
     list_of_vec = []
     with open(file) as f:
         for i,line in enumerate(f):
             parts = line.split()
             word  = parts[0]
             vec   = parts[1:]
-            word_to_index[word] = len(word_to_index)
-            word_index = word_to_index[word]
+            word_to_index_local[word] = len(word_to_index_local)
             list_of_vec.append(np.array(vec, dtype=np.float64))
 
-    return np.matrix(list_of_vec) , word_to_index
+    return np.matrix(list_of_vec) , word_to_index_local
+
+
+def find_similar_words(matrix,intersting_word,inv_map,second_matrix = None,second_inv_map = None,number_to_show = 21):
+    if second_matrix is None: second_matrix= matrix
+    if second_inv_map is None: second_inv_map= inv_map
+    rows = matrix[intersting_word]
+    result = np.dot(rows,second_matrix.T)
+    indecies = np.argsort(result,axis=1)
+    for i in range(len(result)):
+        word  = inv_map[intersting_word[i]]
+        s = ""
+        print "word checked is %s" % word
+        this_row = indecies[i,:]
+        for differnt_word_index in range(number_to_show):
+            other_word = this_row[0,-1-differnt_word_index]
+            angle = result[i,other_word]
+            s += ", %s"%second_inv_map[other_word]
+            #print "%s %f" % (second_inv_map[other_word], angle)
+        print s
+        print ""
 
 
 def main():
@@ -262,7 +281,6 @@ def main():
             print word_context
             print
 
-        exit()
         similarities = find_similarities(check_for_these_words)
         for w_similarity in similarities:
             print "word checked is %s" % w_similarity[0]
@@ -274,20 +292,13 @@ def main():
 
     else:
         matrix, word_to_index = read_w2v("deps.words")
+        context_matrix, contex_to_index = read_w2v("deps.contexts")
         inv_map = {v: k for k, v in word_to_index.iteritems()}
+        context_inv_map = {v: k for k, v in contex_to_index.iteritems()}
         intersting_word = [ word_to_index[c] for c in check_for_these_words ]
-        rows = matrix[intersting_word]
-        result = np.dot(rows,matrix.T)
-        indecies = np.argsort(result,axis=1)
-        for i in range(len(result)):
-            word  = inv_map[intersting_word[i]]
-            print "word checked is %s" % word
-            this_row = indecies[i,:]
-            for differnt_word_index in range(20):
-                other_word = this_row[0,-1-differnt_word_index]
-                angle = result[i,other_word]
-                print "%s %f" % (inv_map[other_word], angle)
-            print ""
+        find_similar_words(matrix,intersting_word,inv_map)
+        find_similar_words(matrix,second_matrix=context_matrix,inv_map=inv_map,second_inv_map=context_inv_map,intersting_word=intersting_word,number_to_show=10)
+
 
 
 
