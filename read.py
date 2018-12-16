@@ -2,16 +2,18 @@ from collections import Counter
 import numpy as np
 import pickle
 import time
-word_counter = Counter()
+relevent_words = set()
 counter_per_word = dict()
 pmi_matrix = {}
 word_to_index = dict()
 probability_per_word = dict()
 attribute_to_set = dict()
-functional_words = set(['IN','DT','TO','CC',','])
+functional_words = set(['IN','DT','TO','CC',',','.'])
+
 
 def get_list_of_sentences(file_name):
-    global word_counter
+    global relevent_words
+    word_counter = Counter()
     all_sentences  = []
     s = []
     with open(file_name) as f:
@@ -28,9 +30,12 @@ def get_list_of_sentences(file_name):
             if not word_to_index.has_key(parts[2]):
                 word_to_index[word] = len(word_to_index)
             word_counter[word_to_index[word]] += 1
+            if word_counter[word_to_index[word]] > 99:
+                relevent_words.add(word_to_index[word])
             s.append((word_to_index[word],parts[4]))
 
-    save_conuter_to_file([all_sentences,word_counter],"all_sentences")
+    print len(relevent_words)
+    #save_conuter_to_file([all_sentences,word_counter],"all_sentences")
     return all_sentences
 
 
@@ -61,11 +66,14 @@ def insert_tupples_into_matrix(all_tupples):
 
 
 def convert_to_pmi():
+    import sys
+    smooth = sys.argv[2] if len(sys.argv) > 2 else "1"
+    smooth = float(smooth)
     sum_of_all_word = get_sum_all_words_from_counter()
     create_probability_per_word(sum_of_all_word)
     for word_index in counter_per_word.keys():
         shared_probability = counter_per_word[word_index]
-        word_probability = np.power(probability_per_word[word_index],0.75)
+        word_probability = np.power(probability_per_word[word_index],smooth)
         pmi_matrix[word_index] = {}
         this_pmi = pmi_matrix[word_index]
         for contex_index in shared_probability:
@@ -123,7 +131,7 @@ def remove_function_word_from_sentence(sentence):
 def remove_words_which_appear_less(sentence):
     new_sen = []
     for w,pos in sentence:
-        if word_counter[w] > 99:
+        if w in relevent_words:
             new_sen.append((w,pos))
     return new_sen
 
@@ -168,7 +176,7 @@ def find_similarities(check_for_these_words):
                 multiplication = pmi_vector[p_value] * pmi_matrix[different_word][p_value]
                 counter_result_for_word[different_word] += multiplication
 
-        final_result.append((w,counter_result_for_word.most_common(20)))
+        final_result.append((w,counter_result_for_word.most_common(21)))
 
     return final_result
 
@@ -183,13 +191,16 @@ def normelize_pmi():
 
 
 def create_from_wikipedia():
+    import sys
     global pmi_matrix
     global word_to_index
     global counter_per_word
     all_sentences = get_list_of_sentences("wikipedia.sample.trees.lemmatized")
     #all_sentences,word_counter = load_counter_from_file("all_sentences")
     print "done loading"
-    create_vectors(all_sentences, k=5)  # k determines size if context window. -1 means full sentence as context.
+    k = sys.argv[1] if len(sys.argv) > 1 else "-1"
+    k = int(k)
+    create_vectors(all_sentences, k=k)  # k determines size if context window. -1 means full sentence as context.
     reduce_matrix(counter_per_word, 5)
 
     # with open('word_to_index_reduced.pickle', 'rb') as handle:
@@ -203,11 +214,11 @@ def create_from_wikipedia():
 
     # counter_per_word = load_counter_from_file("small_window_vector_per_word")
     convert_to_pmi()
-    reduce_matrix(pmi_matrix,0.1)
+    reduce_matrix(pmi_matrix,0.0)
     normelize_pmi()
     # save_conuter_to_file(pmi_matrix,"pmi_matrix_normalized.pickle")
 
-    #save_conuter_to_file(pmi_matrix,"pmi_matrix.pickle")
+    # save_conuter_to_file(pmi_matrix,"pmi_matrix.pickle")
     #pmi_matrix = load_counter_from_file("pmi_matrix_normalized.pickle")
     return pmi_matrix
 
@@ -236,16 +247,31 @@ def main():
 
     if (read_from_wiki):
         create_from_wikipedia()
+        save_conuter_to_file([pmi_matrix,word_to_index],"final_5_window.pickle")
+        #pmi_matrix, word_to_index = load_counter_from_file("final.pickle")
         inv_map = {v: k for k, v in word_to_index.iteritems()}
         fill_attribute_sets()
+        for w in check_for_these_words:
+            index_word = word_to_index[w]
+            pmi_vctoer = pmi_matrix[index_word]
+            import operator
+            sorted_dict = sorted(pmi_vctoer.items(), key=operator.itemgetter(1))
+            sorted_dict = sorted_dict[-20:]
+            word_context = [inv_map[pmi_similarity[0]] for pmi_similarity in sorted_dict]
+            print "word is %s"%w
+            print word_context
+            print
+
+        exit()
         similarities = find_similarities(check_for_these_words)
         for w_similarity in similarities:
             print "word checked is %s" % w_similarity[0]
             for diffrernt_word in w_similarity[1]:
                 other_word = inv_map[diffrernt_word[0]]
                 angle = diffrernt_word[1]
-                print "word %s angle = %f" % (other_word, angle)
+                print "%s %f" % (other_word, angle)
             print
+
     else:
         matrix, word_to_index = read_w2v("deps.words")
         inv_map = {v: k for k, v in word_to_index.iteritems()}
@@ -260,7 +286,7 @@ def main():
             for differnt_word_index in range(20):
                 other_word = this_row[0,-1-differnt_word_index]
                 angle = result[i,other_word]
-                print "word %s angle = %f" % (inv_map[other_word], angle)
+                print "%s %f" % (inv_map[other_word], angle)
             print ""
 
 
